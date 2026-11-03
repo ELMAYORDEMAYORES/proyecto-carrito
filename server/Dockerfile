@@ -1,5 +1,6 @@
 # ---------- Etapa de build ----------
-FROM node:22-alpine AS build
+# node:22-slim (Debian/glibc) para que bcrypt use su binario precompilado
+FROM node:22-slim AS build
 WORKDIR /app
 
 # Copiar la config del workspace (root) y los package.json de cada workspace
@@ -16,7 +17,7 @@ COPY server/src ./server/src
 RUN npm run build -w server
 
 # ---------- Etapa de runtime ----------
-FROM node:22-alpine
+FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
