@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { OrderStatus, ProductStatus, TenantStatus } from "@/lib/mockData";
+import type { OrderStatus, ProductStatus, TenantStatus } from "@/lib/types";
 
 type StatusType = OrderStatus | ProductStatus | TenantStatus;
 

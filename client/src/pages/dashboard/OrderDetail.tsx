@@ -10,9 +10,11 @@ import {
   Truck,
   XCircle,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -24,23 +26,36 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  mockOrders,
-  formatPrice,
-  formatDate,
-  type MockOrder,
-  type OrderStatus,
-} from "@/lib/mockData";
+import { getOrder, updateOrderStatus } from "@/api/orders";
+import { formatPrice, formatDate } from "@/lib/format";
+import type { OrderStatus } from "@/lib/types";
 
 export default function OrderDetail() {
   const { id } = useParams();
-  const foundOrder = mockOrders.find((o) => o.id === id) as MockOrder | undefined;
+  const queryClient = useQueryClient();
 
-  const [status, setStatus] = useState<OrderStatus | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  if (!foundOrder) {
+  const { data: order, isLoading } = useQuery({
+    queryKey: ["order", id],
+    queryFn: () => getOrder(id ?? ""),
+    enabled: Boolean(id),
+  });
+
+  const mutation = useMutation({
+    mutationFn: (status: OrderStatus) => updateOrderStatus(id ?? "", status),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["order", id] });
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+
+  if (isLoading) {
+    return <LoadingSkeleton variant="form" />;
+  }
+
+  if (!order) {
     return (
       <div className="space-y-6">
         <Button variant="ghost" asChild>
@@ -54,15 +69,16 @@ export default function OrderDetail() {
     );
   }
 
-  const order = { ...foundOrder, status: status ?? foundOrder.status };
-
   const handleStatusChange = (newStatus: OrderStatus) => {
-    setStatus(newStatus);
+    mutation.mutate(newStatus);
     setConfirmOpen(false);
     setCancelOpen(false);
   };
 
-  const statusActions: Record<OrderStatus, { label: string; icon: typeof CheckCircle2; nextStatus: OrderStatus; variant?: "warning" } | null> = {
+  const statusActions: Record<
+    OrderStatus,
+    { label: string; icon: typeof CheckCircle2; nextStatus: OrderStatus } | null
+  > = {
     PENDING: { label: "Confirmar pedido", icon: CheckCircle2, nextStatus: "CONFIRMED" },
     CONFIRMED: { label: "Marcar como entregado", icon: Truck, nextStatus: "DELIVERED" },
     DELIVERED: null,
@@ -81,7 +97,7 @@ export default function OrderDetail() {
       </Button>
 
       <PageHeader
-        title={`Pedido ${order.id}`}
+        title={`Pedido ${order.id.slice(0, 8)}`}
         description={`Recibido el ${formatDate(order.createdAt)}`}
       />
 
@@ -102,7 +118,7 @@ export default function OrderDetail() {
               </TableHeader>
               <TableBody>
                 {order.items.map((item) => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.productId}>
                     <TableCell className="font-medium">{item.productName}</TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {formatPrice(item.productPrice)}
@@ -133,13 +149,8 @@ export default function OrderDetail() {
               {currentAction && (
                 <Button
                   className="w-full"
-                  onClick={() => {
-                    if (currentAction.nextStatus === "CANCELLED") {
-                      setCancelOpen(true);
-                    } else {
-                      setConfirmOpen(true);
-                    }
-                  }}
+                  disabled={mutation.isPending}
+                  onClick={() => setConfirmOpen(true)}
                 >
                   <currentAction.icon className="mr-2 size-4" />
                   {currentAction.label}
@@ -150,6 +161,7 @@ export default function OrderDetail() {
                 <Button
                   variant="outline"
                   className="w-full"
+                  disabled={mutation.isPending}
                   onClick={() => setCancelOpen(true)}
                 >
                   <XCircle className="mr-2 size-4" />

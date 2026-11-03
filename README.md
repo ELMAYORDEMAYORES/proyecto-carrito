@@ -1,75 +1,73 @@
-# React + TypeScript + Vite
+# Catálogo SaaS
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Plataforma multi-tenant de catálogos con carrito de compras. Cada negocio se registra, un
+super admin lo aprueba, y el negocio gestiona su catálogo y recibe pedidos de clientes vía
+una URL pública (`/tienda/{slug}`).
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Monorepo**: `client/` + `server/` (npm workspaces).
+- **Frontend**: React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router v7, Zustand, React Query, React Hook Form + Zod.
+- **Backend**: Express 5, TypeScript, Mongoose.
+- **Base de datos**: **MongoDB** (⚠️ desviación del requisito original "Postgres": se usó MongoDB porque el servidor ya lo tenía; funcionalmente equivalente).
+- **Auth**: JWT (access + refresh con rotación y detección de reuso), bcrypt, verificación de email, recuperación de contraseña.
+- **Email**: Nodemailer + SMTP (Mailtrap para testing).
+- **Despliegue**: VPS (Contabo) + Docker + nginx + Cloudflare.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Estructura
 
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+client/src/
+  api/          Cliente de la API (auth, tenant, products, categories, orders, admin, catalog)
+  components/   UI (shadcn/ui + layout + guards)
+  lib/          types, api (fetch wrapper), format, queryClient
+  pages/        auth, dashboard, catalog, admin
+  stores/       zustand (auth, cart, ui)
+server/src/
+  config/       env, db, limits, uploads
+  controllers/  auth, tenant, category, product, order, admin, catalog
+  middleware/   authenticate, authorize, validate, upload, rateLimiter, errorHandler
+  models/       User, Tenant, Category, Product, Order, RefreshToken, EmailToken, LoginAttempt
+  routes/       por dominio
+  schemas/      validación Zod
+  services/     token, email, slug, image
+  utils/        ApiError, asyncHandler, money, password, file, request
+server/tests/    tests (unit + integración)
+deploy/         nginx config, backup.sh, sudo-setup.sh, CI/CD
 ```
+
+## Desarrollo local
+
+```bash
+npm install
+npm run dev            # client + server (concurrently)
+```
+
+El server necesita MongoDB. En dev se usa un túnel SSH al Mongo del VPS:
+
+```bash
+ssh -fN -L 27017:localhost:27017 servidor
+```
+
+Configurar variables en `server/.env` (ver `server/.env.example`).
+
+## Tests
+
+```bash
+npm test -w server     # unit + integración (Vitest + Supertest + mongodb-memory-server)
+```
+
+## Despliegue (producción)
+
+- **Backend**: Docker (`server/Dockerfile`), corre como contenedor `catalogo-server` con `network_mode: host`.
+- **Frontend**: build estático en `/var/www/catalogo/dist`, servido por nginx (ver `deploy/nginx-catalogo.conf`).
+- **CI/CD**: `.github/workflows/deploy.yml` (requiere secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`).
+- **Backups**: `deploy/backup.sh` (cron diario a las 3 AM, retención 7 días).
+
+## Seguridad
+
+- Contraseñas con bcrypt (cost 12); nunca en texto plano.
+- Rate limiting (auth + pedidos) y lockout de login anti fuerza bruta.
+- Imágenes validadas por magic bytes (no por extensión).
+- MongoDB con autenticación (usuario `catalogo`, solo acceso local).
+- Scoping por `tenantId` en todas las queries.

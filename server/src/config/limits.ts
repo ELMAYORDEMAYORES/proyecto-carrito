@@ -1,0 +1,4 @@
+export const MAX_PRODUCTS_PER_TENANT = 500;
+export const MAX_CATEGORIES_PER_TENANT = 20;
+export const MAX_IMAGES_PER_PRODUCT = 5;
+export const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;

@@ -1,25 +1,31 @@
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, Store } from "lucide-react";
+import { Link } from "react-router";
+import { Eye, EyeOff, Store, AlertCircle, MailCheck } from "lucide-react";
 import { useState, useCallback } from "react";
 import { AuthCard } from "@/components/shared/AuthCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { register as registerUser } from "@/api/auth";
+import { ApiError } from "@/lib/api";
 
 const registerSchema = z
   .object({
-    businessName: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+    businessName: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
     slug: z
       .string()
       .min(3, "El slug debe tener al menos 3 caracteres")
       .regex(/^[a-z0-9-]+$/, "Solo letras minúsculas, números y guiones"),
     ownerName: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
     email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
-    password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+    password: z
+      .string()
+      .min(8, "La contraseña debe tener al menos 8 caracteres")
+      .regex(/[A-Z]/, "Debe contener al menos una mayúscula")
+      .regex(/[0-9]/, "Debe contener al menos un número"),
     confirmPassword: z.string().min(1, "Confirma tu contraseña"),
     acceptTerms: z.literal(true, {
       message: "Debes aceptar los términos y condiciones",
@@ -44,13 +50,16 @@ function slugify(text: string): string {
 export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -77,10 +86,42 @@ export default function Register() {
     [setValue, watch]
   );
 
-  const onSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
-    navigate("/login");
+  const onSubmit = async (data: RegisterForm) => {
+    setError(null);
+    try {
+      await registerUser({
+        name: data.ownerName,
+        email: data.email,
+        password: data.password,
+        storeName: data.businessName,
+        storeSlug: data.slug || undefined,
+      });
+      setRegisteredEmail(data.email);
+      setSuccess(true);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Error al crear la cuenta"
+      );
+    }
   };
+
+  if (success) {
+    return (
+      <AuthCard title="Revisa tu email">
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <MailCheck className="size-12 text-success" />
+          <p className="text-muted-foreground">
+            Te enviamos un link de verificación a{" "}
+            <span className="font-medium text-foreground">{registeredEmail}</span>.
+            Confirma tu cuenta para poder iniciar sesión.
+          </p>
+          <Button variant="outline" asChild className="mt-2">
+            <Link to="/login">Ir a iniciar sesión</Link>
+          </Button>
+        </div>
+      </AuthCard>
+    );
+  }
 
   return (
     <AuthCard
@@ -96,6 +137,13 @@ export default function Register() {
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="businessName">Nombre del negocio</Label>
           <Input
@@ -189,7 +237,18 @@ export default function Register() {
         </div>
 
         <div className="flex items-start gap-3 rounded-lg border border-border p-4">
-          <Checkbox id="acceptTerms" {...register("acceptTerms")} className="mt-0.5" />
+          <Controller
+            name="acceptTerms"
+            control={control}
+            render={({ field }) => (
+              <Checkbox
+                id="acceptTerms"
+                checked={field.value === true}
+                onCheckedChange={(checked) => field.onChange(checked === true)}
+                className="mt-0.5"
+              />
+            )}
+          />
           <div className="grid gap-1">
             <label
               htmlFor="acceptTerms"

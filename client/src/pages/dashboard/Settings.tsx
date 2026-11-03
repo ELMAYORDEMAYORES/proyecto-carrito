@@ -1,8 +1,11 @@
+import { useEffect, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Upload, ExternalLink, Store } from "lucide-react";
+import { Save, Upload, ExternalLink, Store, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,54 +17,127 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { mockTenant } from "@/lib/mockData";
+import { getTenant, updateTenant, uploadLogo, uploadBanner } from "@/api/tenant";
 
 const settingsSchema = z.object({
-  name: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+  name: z.string().min(1, "El nombre es requerido").max(100),
   slug: z
     .string()
     .min(3, "El slug debe tener al menos 3 caracteres")
     .regex(/^[a-z0-9-]+(?:-[a-z0-9]+)*$/, "Formato inválido"),
   description: z.string().optional(),
-  email: z.string().email("Email inválido"),
+  slogan: z.string().optional(),
+  email: z
+    .string()
+    .email("Email inválido")
+    .or(z.literal("")),
   phone: z.string().optional(),
   address: z.string().optional(),
   showEmail: z.boolean(),
   showPhone: z.boolean(),
   showAddress: z.boolean(),
   showDescription: z.boolean(),
+  showSlogan: z.boolean(),
 });
 
 type SettingsForm = z.input<typeof settingsSchema>;
 
 export default function Settings() {
+  const queryClient = useQueryClient();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: tenant, isLoading } = useQuery({
+    queryKey: ["tenant"],
+    queryFn: getTenant,
+  });
+
   const {
     register,
     handleSubmit,
     control,
+    reset,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
-      name: mockTenant.name,
-      slug: mockTenant.slug,
-      description: mockTenant.description,
-      email: mockTenant.email,
-      phone: mockTenant.phone,
-      address: mockTenant.address,
-      showEmail: mockTenant.config.showEmail,
-      showPhone: mockTenant.config.showPhone,
-      showAddress: mockTenant.config.showAddress,
-      showDescription: mockTenant.config.showDescription,
+      name: "",
+      slug: "",
+      description: "",
+      slogan: "",
+      email: "",
+      phone: "",
+      address: "",
+      showEmail: true,
+      showPhone: true,
+      showAddress: true,
+      showDescription: true,
+      showSlogan: true,
     },
   });
 
-  const watchAll = watch();
+  useEffect(() => {
+    if (tenant) {
+      reset({
+        name: tenant.name,
+        slug: tenant.slug,
+        description: tenant.description,
+        slogan: tenant.slogan,
+        email: tenant.email,
+        phone: tenant.phone,
+        address: tenant.address,
+        showEmail: tenant.config.showEmail,
+        showPhone: tenant.config.showPhone,
+        showAddress: tenant.config.showAddress,
+        showDescription: tenant.config.showDescription,
+        showSlogan: tenant.config.showSlogan,
+      });
+    }
+  }, [tenant, reset]);
 
-  const onSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
-  };
+  const saveMutation = useMutation({
+    mutationFn: (data: SettingsForm) =>
+      updateTenant({
+        name: data.name,
+        slug: data.slug,
+        description: data.description ?? "",
+        slogan: data.slogan ?? "",
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        address: data.address ?? "",
+        config: {
+          showEmail: data.showEmail,
+          showPhone: data.showPhone,
+          showAddress: data.showAddress,
+          showDescription: data.showDescription,
+          showSlogan: data.showSlogan,
+        },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    },
+  });
+
+  const logoMutation = useMutation({
+    mutationFn: (file: File) => uploadLogo(file),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    },
+  });
+
+  const bannerMutation = useMutation({
+    mutationFn: (file: File) => uploadBanner(file),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    },
+  });
+
+  if (isLoading) {
+    return <LoadingSkeleton variant="form" />;
+  }
+
+  const watchSlug = watch("slug");
 
   return (
     <div className="space-y-8">
@@ -70,7 +146,7 @@ export default function Settings() {
         description="Personaliza los datos de tu negocio."
       />
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={handleSubmit((d) => saveMutation.mutate(d))} className="space-y-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Identidad visual</CardTitle>
@@ -80,27 +156,45 @@ export default function Settings() {
               <Label>Logo</Label>
               <div className="flex items-center gap-4">
                 <Avatar className="size-20 rounded-lg">
-                  <AvatarImage src={mockTenant.logoUrl ?? undefined} />
+                  <AvatarImage src={tenant?.logoUrl ?? undefined} />
                   <AvatarFallback className="rounded-lg bg-muted text-2xl">
                     <Store className="size-8 text-muted-foreground" />
                   </AvatarFallback>
                 </Avatar>
-                <Button type="button" variant="outline" size="sm">
-                  <Upload className="mr-2 size-4" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={logoMutation.isPending}
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {logoMutation.isPending ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-2 size-4" />
+                  )}
                   Subir logo
                 </Button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) logoMutation.mutate(f);
+                    e.target.value = "";
+                  }}
+                />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Recomendado: 256x256px. PNG o SVG con fondo transparente.
-              </p>
             </div>
 
             <div className="space-y-2">
               <Label>Banner</Label>
               <div className="aspect-[3/1] w-full max-w-md overflow-hidden rounded-lg border border-border bg-muted">
-                {mockTenant.bannerUrl ? (
+                {tenant?.bannerUrl ? (
                   <img
-                    src={mockTenant.bannerUrl}
+                    src={tenant.bannerUrl}
                     alt="Banner"
                     className="h-full w-full object-cover"
                   />
@@ -111,13 +205,31 @@ export default function Settings() {
                   </div>
                 )}
               </div>
-              <Button type="button" variant="outline" size="sm">
-                <Upload className="mr-2 size-4" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={bannerMutation.isPending}
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                {bannerMutation.isPending ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 size-4" />
+                )}
                 Subir banner
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Recomendado: 1200x400px. JPG o PNG.
-              </p>
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) bannerMutation.mutate(f);
+                  e.target.value = "";
+                }}
+              />
             </div>
           </CardContent>
         </Card>
@@ -140,7 +252,7 @@ export default function Settings() {
               <div className="flex items-center gap-2">
                 <Input id="slug" placeholder="mi-tienda" {...register("slug")} />
                 <a
-                  href={`/tienda/${watchAll.slug}`}
+                  href={`/tienda/${watchSlug}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="shrink-0 text-muted-foreground hover:text-primary"
@@ -149,7 +261,7 @@ export default function Settings() {
                 </a>
               </div>
               <p className="text-xs text-muted-foreground">
-                catálogo.app/tienda/{watchAll.slug || "mi-tienda"}
+                catálogo.app/tienda/{watchSlug || "mi-tienda"}
               </p>
               {errors.slug && (
                 <p className="text-sm text-destructive">{errors.slug.message}</p>
@@ -163,6 +275,15 @@ export default function Settings() {
                 placeholder="Describe tu negocio..."
                 rows={3}
                 {...register("description")}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="slogan">Eslogan</Label>
+              <Input
+                id="slogan"
+                placeholder="El mejor lugar para comprar"
+                {...register("slogan")}
               />
             </div>
 
@@ -210,6 +331,7 @@ export default function Settings() {
                 { key: "showPhone", label: "Mostrar teléfono" },
                 { key: "showAddress", label: "Mostrar dirección" },
                 { key: "showDescription", label: "Mostrar descripción" },
+                { key: "showSlogan", label: "Mostrar eslogan" },
               ] as const
             ).map(({ key, label }) => (
               <div
@@ -235,9 +357,13 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Button type="submit" disabled={isSubmitting}>
-          <Save className="mr-2 size-4" />
-          {isSubmitting ? "Guardando..." : "Guardar cambios"}
+        <Button type="submit" disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? (
+            <Loader2 className="mr-2 size-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 size-4" />
+          )}
+          {saveMutation.isPending ? "Guardando..." : "Guardar cambios"}
         </Button>
       </form>
     </div>

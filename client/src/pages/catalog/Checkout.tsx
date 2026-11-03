@@ -2,8 +2,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Send, ShoppingBag, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
+import {
+  ArrowLeft,
+  Send,
+  ShoppingBag,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useCartStore } from "@/stores/cartStore";
-import { formatPrice } from "@/lib/mockData";
+import { createOrder } from "@/api/catalog";
+import { ApiError } from "@/lib/api";
+import { formatPrice } from "@/lib/format";
 
 const checkoutSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -23,11 +31,14 @@ const checkoutSchema = z.object({
 type CheckoutForm = z.input<typeof checkoutSchema>;
 
 export default function Checkout() {
-  const { slug } = useParams();
-  const items = useCartStore((s) => s.items);
-  const getTotal = useCartStore((s) => s.getTotal);
-  const clearCart = useCartStore((s) => s.clearCart);
+  const { slug = "" } = useParams();
+  const allItems = useCartStore((s) => s.items);
+  const removeItem = useCartStore((s) => s.removeItem);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const items = allItems.filter((i) => i.tenantSlug === slug);
+  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
   const {
     register,
@@ -37,10 +48,26 @@ export default function Checkout() {
     resolver: zodResolver(checkoutSchema),
   });
 
-  const onSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 800));
-    clearCart();
-    setSubmitted(true);
+  const onSubmit = async (data: CheckoutForm) => {
+    setError(null);
+    try {
+      await createOrder(slug, {
+        customerName: data.name,
+        customerEmail: data.email,
+        customerPhone: data.phone || undefined,
+        notes: data.notes || null,
+        items: items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+        })),
+      });
+      items.forEach((i) => removeItem(i.productId));
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Error al enviar el pedido"
+      );
+    }
   };
 
   if (items.length === 0 && !submitted) {
@@ -95,6 +122,13 @@ export default function Checkout() {
             onSubmit={handleSubmit(onSubmit)}
             className="space-y-5 lg:col-span-3"
           >
+            {error && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Tus datos</CardTitle>
@@ -173,11 +207,15 @@ export default function Checkout() {
                 {items.map((item) => (
                   <div key={item.productId} className="flex items-center gap-3">
                     <div className="size-12 shrink-0 overflow-hidden rounded-md bg-muted">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                      />
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ShoppingBag className="m-3 size-6 text-muted-foreground/40" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
@@ -198,7 +236,7 @@ export default function Checkout() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Total</span>
                   <span className="text-lg font-bold">
-                    {formatPrice(getTotal())}
+                    {formatPrice(total)}
                   </span>
                 </div>
               </CardContent>

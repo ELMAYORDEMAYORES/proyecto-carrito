@@ -16,7 +16,7 @@ export default function App() {
       <Button size="lg">
         <ShoppingBag className="mr-2 size-5" />
         Empezar
-      </Button>
+      </Button>∑
     </div>
   );
 }

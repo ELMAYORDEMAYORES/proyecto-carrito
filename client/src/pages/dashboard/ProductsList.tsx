@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Plus, Search, PackageOpen, Pencil, Archive } from "lucide-react";
+import {
+  Plus,
+  Search,
+  PackageOpen,
+  Pencil,
+  Archive,
+  RotateCcw,
+  ImageIcon,
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,35 +24,56 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import {
-  mockProducts,
-  mockCategories,
-  formatPrice,
-  type ProductStatus,
-} from "@/lib/mockData";
+import { listProducts, updateProduct } from "@/api/products";
+import { listCategories } from "@/api/categories";
+import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { ProductStatus } from "@/lib/types";
 
 export default function ProductsList() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<ProductStatus | "ALL">("ALL");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const filtered = mockProducts.filter((p) => {
-    const matchesSearch =
-      !search || p.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory =
-      categoryFilter === "ALL" || p.categoryId === categoryFilter;
-    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
-    return matchesSearch && matchesCategory && matchesStatus;
+  const { data: categoriesData } = useQuery({
+    queryKey: ["categories"],
+    queryFn: listCategories,
   });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["products", categoryFilter, statusFilter],
+    queryFn: () =>
+      listProducts({
+        category: categoryFilter === "ALL" ? undefined : categoryFilter,
+        status: statusFilter === "ALL" ? undefined : statusFilter,
+      }),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (vars: { id: string; status: ProductStatus }) =>
+      updateProduct(vars.id, { status: vars.status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
+  const categories = categoriesData?.items ?? [];
+  const products = (data?.items ?? []).filter(
+    (p) => !search || p.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Productos"
         description="Gestiona el catálogo de tu tienda."
-        action={{ label: "Nuevo producto", icon: Plus, onClick: () => navigate("/dashboard/productos/nuevo") }}
+        action={{
+          label: "Nuevo producto",
+          icon: Plus,
+          onClick: () => navigate("/dashboard/productos/nuevo"),
+        }}
       />
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -61,7 +92,7 @@ export default function ProductsList() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Todas</SelectItem>
-            {mockCategories.map((cat) => (
+            {categories.map((cat) => (
               <SelectItem key={cat.id} value={cat.id}>
                 {cat.name}
               </SelectItem>
@@ -84,7 +115,9 @@ export default function ProductsList() {
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <LoadingSkeleton variant="card-grid" />
+      ) : products.length === 0 ? (
         <EmptyState
           icon={PackageOpen}
           title="No se encontraron productos"
@@ -95,13 +128,16 @@ export default function ProductsList() {
           }
           action={
             !search && categoryFilter === "ALL" && statusFilter === "ALL"
-              ? { label: "Crear producto", onClick: () => navigate("/dashboard/productos/nuevo") }
+              ? {
+                  label: "Crear producto",
+                  onClick: () => navigate("/dashboard/productos/nuevo"),
+                }
               : undefined
           }
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((product) => (
+          {products.map((product) => (
             <div
               key={product.id}
               className={cn(
@@ -110,12 +146,18 @@ export default function ProductsList() {
               )}
             >
               <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-                <img
-                  src={product.images[0]}
-                  alt={product.name}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  loading="lazy"
-                />
+                {product.images[0] ? (
+                  <img
+                    src={product.images[0]}
+                    alt={product.name}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <ImageIcon className="size-8 text-muted-foreground/40" />
+                  </div>
+                )}
               </div>
               <div className="space-y-2 p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -124,9 +166,11 @@ export default function ProductsList() {
                   </h3>
                   <StatusBadge status={product.status} className="shrink-0" />
                 </div>
-                <Badge variant="secondary" className="text-xs">
-                  {product.categoryName}
-                </Badge>
+                {product.categoryName && (
+                  <Badge variant="secondary" className="text-xs">
+                    {product.categoryName}
+                  </Badge>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-semibold">
                     {formatPrice(product.price)}
@@ -155,10 +199,31 @@ export default function ProductsList() {
                       Editar
                     </Link>
                   </Button>
-                  {product.status !== "ARCHIVED" && (
-                    <Button variant="outline" size="sm" className="flex-1">
+                  {product.status !== "ARCHIVED" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={archiveMutation.isPending}
+                      onClick={() =>
+                        archiveMutation.mutate({ id: product.id, status: "ARCHIVED" })
+                      }
+                    >
                       <Archive className="mr-1.5 size-3.5" />
                       Archivar
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={archiveMutation.isPending}
+                      onClick={() =>
+                        archiveMutation.mutate({ id: product.id, status: "ACTIVE" })
+                      }
+                    >
+                      <RotateCcw className="mr-1.5 size-3.5" />
+                      Reactivar
                     </Button>
                   )}
                 </div>

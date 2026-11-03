@@ -3,15 +3,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useParams } from "react-router";
 import { useState } from "react";
-import { Eye, EyeOff, LockKeyhole, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, CheckCircle2, AlertCircle } from "lucide-react";
 import { AuthCard } from "@/components/shared/AuthCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { resetPassword } from "@/api/auth";
+import { ApiError } from "@/lib/api";
 
 const resetPasswordSchema = z
   .object({
-    password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+    password: z
+      .string()
+      .min(8, "La contraseña debe tener al menos 8 caracteres")
+      .regex(/[A-Z]/, "Debe contener al menos una mayúscula")
+      .regex(/[0-9]/, "Debe contener al menos un número"),
     confirmPassword: z.string().min(1, "Confirma tu contraseña"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -25,6 +31,7 @@ export default function ResetPassword() {
   const { token } = useParams();
   const [showPassword, setShowPassword] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     register,
@@ -34,9 +41,16 @@ export default function ResetPassword() {
     resolver: zodResolver(resetPasswordSchema),
   });
 
-  const onSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 800));
-    setSuccess(true);
+  const onSubmit = async (data: ResetPasswordForm) => {
+    setError(null);
+    try {
+      await resetPassword(token ?? "", data.password);
+      setSuccess(true);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Error al actualizar la contraseña"
+      );
+    }
   };
 
   if (success) {
@@ -58,7 +72,7 @@ export default function ResetPassword() {
   return (
     <AuthCard
       title="Restablecer contraseña"
-      description={`Token: ${token?.slice(0, 12)}...`}
+      description="Elige una nueva contraseña para tu cuenta."
       footer={
         <p>
           <Link to="/login" className="font-medium text-primary hover:underline">
@@ -68,6 +82,13 @@ export default function ResetPassword() {
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="password">Nueva contraseña</Label>
           <div className="relative">

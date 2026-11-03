@@ -1,35 +1,24 @@
 import { create } from "zustand";
+import type { User } from "@/lib/types";
 
-export type UserRole = "SUPER_ADMIN" | "OWNER" | "ADMIN" | "STAFF";
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  tenantId?: string;
-  tenantSlug?: string;
-}
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  isAuthenticated: boolean;
-  login: (user: User, accessToken: string) => void;
-  logout: () => void;
+  status: AuthStatus;
+  setAuth: (user: User, accessToken: string) => void;
+  setAccessToken: (accessToken: string) => void;
+  setUnauthenticated: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: {
-    id: "mock-user-001",
-    email: "vendedor@demo.com",
-    name: "María García",
-    role: "OWNER",
-    tenantId: "mock-tenant-001",
-    tenantSlug: "mi-tienda",
-  },
-  accessToken: "mock-access-token",
-  isAuthenticated: true,
-  login: (user, accessToken) => set({ user, accessToken, isAuthenticated: true }),
-  logout: () => set({ user: null, accessToken: null, isAuthenticated: false }),
+  user: null,
+  accessToken: null,
+  status: "loading",
+  setAuth: (user, accessToken) =>
+    set({ user, accessToken, status: "authenticated" }),
+  setAccessToken: (accessToken) => set({ accessToken }),
+  setUnauthenticated: () =>
+    set({ user: null, accessToken: null, status: "unauthenticated" }),
 }));

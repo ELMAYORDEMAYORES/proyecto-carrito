@@ -1,21 +1,31 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, Minus, Plus, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Minus, Plus, ShoppingCart, ImageIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { mockProducts, formatPrice } from "@/lib/mockData";
+import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
+import { getCatalogProduct } from "@/api/catalog";
+import { formatPrice } from "@/lib/format";
 import { useCartStore } from "@/stores/cartStore";
 
 export default function ProductDetail() {
-  const { slug, id } = useParams();
-  const product = mockProducts.find(
-    (p) => p.id === id && p.status === "ACTIVE"
-  );
+  const { slug = "", id = "" } = useParams();
   const addItem = useCartStore((s) => s.addItem);
   const [quantity, setQuantity] = useState(1);
 
-  if (!product) {
+  const { data: product, isLoading, isError } = useQuery({
+    queryKey: ["catalog-product", slug, id],
+    queryFn: () => getCatalogProduct(slug, id),
+    enabled: Boolean(slug && id),
+  });
+
+  if (isLoading) {
+    return <LoadingSkeleton variant="form" />;
+  }
+
+  if (isError || !product) {
     return (
       <div className="container mx-auto flex min-h-svh items-center justify-center px-4">
         <div className="text-center">
@@ -35,10 +45,10 @@ export default function ProductDetail() {
       productId: product.id,
       name: product.name,
       price: product.price,
-      imageUrl: product.images[0],
+      imageUrl: product.images[0] ?? "",
       quantity,
       stock: product.stock,
-      tenantSlug: slug ?? "",
+      tenantSlug: slug,
     });
   };
 
@@ -54,16 +64,24 @@ export default function ProductDetail() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div className="aspect-[4/3] w-full overflow-hidden rounded-lg bg-muted">
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              className="h-full w-full object-cover"
-            />
+            {product.images[0] ? (
+              <img
+                src={product.images[0]}
+                alt={product.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <ImageIcon className="size-12 text-muted-foreground/40" />
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
             <div className="space-y-3">
-              <Badge variant="secondary">{product.categoryName}</Badge>
+              {product.categoryName && (
+                <Badge variant="secondary">{product.categoryName}</Badge>
+              )}
               <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
                 {product.name}
               </h1>

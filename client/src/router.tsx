@@ -1,6 +1,8 @@
 import { createBrowserRouter } from "react-router";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 import { CatalogLayout } from "@/components/layout/CatalogLayout";
+import { RequireAuth, RequireAdmin } from "@/components/guards/RequireAuth";
 
 export const router = createBrowserRouter([
   {
@@ -28,7 +30,11 @@ export const router = createBrowserRouter([
     lazy: () => import("@/pages/auth/VerifyEmail").then((m) => ({ Component: m.default })),
   },
   {
-    element: <DashboardLayout />,
+    element: (
+      <RequireAuth>
+        <DashboardLayout />
+      </RequireAuth>
+    ),
     children: [
       {
         path: "/dashboard/pedidos",
@@ -51,9 +57,22 @@ export const router = createBrowserRouter([
         lazy: () => import("@/pages/dashboard/ProductForm").then((m) => ({ Component: m.default })),
       },
       {
+        path: "/dashboard/categorias",
+        lazy: () => import("@/pages/dashboard/CategoriesList").then((m) => ({ Component: m.default })),
+      },
+      {
         path: "/dashboard/configuracion",
         lazy: () => import("@/pages/dashboard/Settings").then((m) => ({ Component: m.default })),
       },
+    ],
+  },
+  {
+    element: (
+      <RequireAdmin>
+        <AdminLayout />
+      </RequireAdmin>
+    ),
+    children: [
       {
         path: "/admin/negocios",
         lazy: () => import("@/pages/admin/TenantsList").then((m) => ({ Component: m.default })),

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { Download, Eye, PackageOpen } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -14,12 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  mockOrders,
-  formatPrice,
-  formatDate,
-  type OrderStatus,
-} from "@/lib/mockData";
+import { listOrders, exportOrdersCsv } from "@/api/orders";
+import { formatPrice, formatDate } from "@/lib/format";
+import type { OrderStatus } from "@/lib/types";
 
 const statusTabs: { value: OrderStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "Todos" },
@@ -31,35 +30,23 @@ const statusTabs: { value: OrderStatus | "ALL"; label: string }[] = [
 
 export default function OrdersList() {
   const [filter, setFilter] = useState<OrderStatus | "ALL">("ALL");
+  const [exporting, setExporting] = useState(false);
 
-  const filteredOrders =
-    filter === "ALL"
-      ? mockOrders
-      : mockOrders.filter((o) => o.status === filter);
+  const { data, isLoading } = useQuery({
+    queryKey: ["orders", filter],
+    queryFn: () =>
+      listOrders({ status: filter === "ALL" ? undefined : filter }),
+  });
 
-  const handleExportCSV = () => {
-    const header = "ID,Cliente,Email,Teléfono,Estado,Total,Fecha\n";
-    const rows = filteredOrders
-      .map((o) =>
-        [
-          o.id,
-          o.customerName,
-          o.customerEmail,
-          o.customerPhone ?? "",
-          o.status,
-          o.total,
-          o.createdAt,
-        ].join(",")
-      )
-      .join("\n");
+  const orders = data?.items ?? [];
 
-    const blob = new Blob([header + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `pedidos-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      await exportOrdersCsv();
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -67,7 +54,11 @@ export default function OrdersList() {
       <PageHeader
         title="Pedidos"
         description="Gestiona los pedidos de tus clientes."
-        action={{ label: "Exportar CSV", icon: Download, onClick: handleExportCSV }}
+        action={{
+          label: exporting ? "Exportando..." : "Exportar CSV",
+          icon: Download,
+          onClick: handleExportCSV,
+        }}
       />
 
       <Tabs
@@ -83,7 +74,9 @@ export default function OrdersList() {
         </TabsList>
       </Tabs>
 
-      {filteredOrders.length === 0 ? (
+      {isLoading ? (
+        <LoadingSkeleton variant="table" />
+      ) : orders.length === 0 ? (
         <EmptyState
           icon={PackageOpen}
           title="No hay pedidos"
@@ -108,10 +101,10 @@ export default function OrdersList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrders.map((order) => (
+              {orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {order.id}
+                    {order.id.slice(0, 8)}
                   </TableCell>
                   <TableCell className="font-medium">{order.customerName}</TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">

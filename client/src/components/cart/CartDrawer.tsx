@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useCartStore } from "@/stores/cartStore";
 import { useUIStore } from "@/stores/uiStore";
-import { formatPrice } from "@/lib/mockData";
+import { formatPrice } from "@/lib/format";
 
 export function CartDrawer() {
   const { slug } = useParams();

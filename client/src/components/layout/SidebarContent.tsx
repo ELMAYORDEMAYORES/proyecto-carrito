@@ -1,15 +1,8 @@
 import { NavLink, useNavigate } from "react-router";
-import {
-  LayoutDashboard,
-  Package,
-  Settings,
-  Building2,
-  LogOut,
-  ShoppingBag,
-} from "lucide-react";
+import { LayoutDashboard, Package, Tags, Settings, LogOut, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
-import { useAuthStore } from "@/stores/authStore";
+import { logout } from "@/api/auth";
 
 interface SidebarContentProps {
   onNavigate?: () => void;
@@ -25,15 +18,14 @@ const linkClasses = ({ isActive }: { isActive: boolean }) =>
 
 export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
 
   const handleClick = () => {
     onNavigate?.();
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
     onNavigate?.();
   };
 
@@ -69,23 +61,21 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         </NavLink>
 
         <NavLink
+          to="/dashboard/categorias"
+          className={linkClasses}
+          onClick={handleClick}
+        >
+          <Tags className="size-5 shrink-0" />
+          Categorías
+        </NavLink>
+
+        <NavLink
           to="/dashboard/configuracion"
           className={linkClasses}
           onClick={handleClick}
         >
           <Settings className="size-5 shrink-0" />
           Configuración
-        </NavLink>
-
-        <Separator className="my-2 bg-sidebar-border" />
-
-        <NavLink
-          to="/admin/negocios"
-          className={linkClasses}
-          onClick={handleClick}
-        >
-          <Building2 className="size-5 shrink-0" />
-          Negocios
         </NavLink>
       </nav>
 

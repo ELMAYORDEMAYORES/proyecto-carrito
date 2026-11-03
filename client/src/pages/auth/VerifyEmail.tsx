@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { AuthCard } from "@/components/shared/AuthCard";
 import { Button } from "@/components/ui/button";
+import { verifyEmail } from "@/api/auth";
 
 type VerifyState = "loading" | "success" | "error";
 
@@ -11,10 +12,22 @@ export default function VerifyEmail() {
   const [state, setState] = useState<VerifyState>("loading");
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setState(token && token.length > 3 ? "success" : "error");
-    }, 1500);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        await verifyEmail(token ?? "");
+        if (!cancelled) setState("success");
+      } catch {
+        if (!cancelled) setState("error");
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   return (

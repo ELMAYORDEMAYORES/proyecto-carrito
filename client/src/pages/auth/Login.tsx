@@ -2,27 +2,26 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { AuthCard } from "@/components/shared/AuthCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useAuthStore } from "@/stores/authStore";
+import { login } from "@/api/auth";
+import { ApiError } from "@/lib/api";
 
 const loginSchema = z.object({
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
-  rememberMe: z.boolean().optional(),
+  password: z.string().min(1, "La contraseña es obligatoria"),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login);
 
   const {
     register,
@@ -30,23 +29,23 @@ export default function Login() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "vendedor@demo.com", password: "", rememberMe: false },
+    defaultValues: { email: "", password: "" },
   });
 
-  const onSubmit = async (_data: LoginForm) => {
-    await new Promise((r) => setTimeout(r, 500));
-    login(
-      {
-        id: "mock-user-001",
-        email: _data.email,
-        name: "María García",
-        role: "OWNER",
-        tenantId: "mock-tenant-001",
-        tenantSlug: "mi-tienda",
-      },
-      "mock-access-token"
-    );
-    navigate("/dashboard/pedidos");
+  const onSubmit = async (data: LoginForm) => {
+    setError(null);
+    try {
+      const user = await login(data.email, data.password);
+      if (user.role === "SUPER_ADMIN") {
+        navigate("/admin/negocios");
+      } else {
+        navigate("/dashboard/pedidos");
+      }
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Error al iniciar sesión"
+      );
+    }
   };
 
   return (
@@ -63,6 +62,13 @@ export default function Login() {
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -107,13 +113,6 @@ export default function Login() {
           {errors.password && (
             <p className="text-sm text-destructive">{errors.password.message}</p>
           )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox id="rememberMe" {...register("rememberMe")} />
-          <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
-            Recordarme
-          </Label>
         </div>
 
         <Button type="submit" className="w-full" disabled={isSubmitting}>
